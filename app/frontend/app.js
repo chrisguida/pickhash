@@ -376,7 +376,7 @@ document.addEventListener('alpine:init', () => {
       this.poolReportText = this.poolOk
         ? `Endpoint serves work (subscribe ${pr.msToSubscribe}ms, first work ${pr.msToFirstWork}ms, difficulty ${pr.difficulty}).${this.diffSupportNote(r.json.supports_password_diff)}`
         : (r.json.probe && r.json.probe.gotWork && r.json.rental_worker_ok === false)
-          ? `The endpoint serves work for that username, but not for the one rentals send (${r.json.rental_worker}). Pickhash adds -r<rental-id> per rental, so with no dot the suffix runs into the address. Enter it as address.worker and the suffix lands on the worker name instead.`
+          ? `The endpoint serves work for that username, but not for the one rentals send (${r.json.rental_worker}). Each rental connects as your-address.r<rental-id>, so this pool has to accept a worker name after the address. Check the address is right for this pool.`
           : `Endpoint reachable: ${pr.reachable}, but no work received (${pr.error || 'no work'}). Check that Datum is running.`;
     },
     /*
@@ -596,6 +596,7 @@ document.addEventListener('alpine:init', () => {
         rate_ceiling_hold: `Holding${c.active_th != null && c.target_th != null ? ` at ${this.fmtHashTh(c.active_th)}/${this.fmtHashTh(c.target_th)}` : ' below target'} — your blended rate ceiling is reached. Raise it in the Autopilot preview (or Settings), or wait for cheaper rigs.`,
         rig_rerouted: `${c.name || 'A rig'} wasn’t mining on your pool — switched it to the fallback pool${c.messaged ? ' and messaged the owner' : ''}`,
         duckdns_update_failed: `Your endpoint's IP changed but the DuckDNS name couldn't be updated${c.name ? ` (${c.name}.duckdns.org)` : ''} — it may point at the old IP. Check your DuckDNS token.`,
+        worker_repaired: `Corrected the stratum username on ${c.repaired || 'your'} active rental${c.repaired === 1 ? '' : 's'}${c.sample && c.sample.to ? ` (now ${c.sample.to})` : ''} — some pools couldn't credit the old form, so that hashrate wasn't reaching your address`,
       };
       return map[a.kind] || a.kind;
     },
@@ -1253,7 +1254,7 @@ document.addEventListener('alpine:init', () => {
         this.seBusy = false;
         this.seReportClass = 'text-neon-pink';
         this.seReport = (r.json.probe && r.json.probe.gotWork && r.json.rental_worker_ok === false)
-          ? `The endpoint serves work for that username, but not for the one rentals send (${r.json.rental_worker}). Pickhash adds -r<rental-id> per rental, so with no dot the suffix runs into the address. Enter it as address.worker and the suffix lands on the worker name instead. Not saved.`
+          ? `The endpoint serves work for that username, but not for the one rentals send (${r.json.rental_worker}). Each rental connects as your-address.r<rental-id>, so this pool has to accept a worker name after the address. Check the address is right for this pool. Not saved.`
           : `Endpoint reachable: ${pr.reachable}, but no work received (${pr.error || 'no work'}). Not saved.`;
         return;
       }

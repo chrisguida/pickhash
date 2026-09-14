@@ -15,6 +15,7 @@ const dispute = require('./dispute');
 const alerts = require('../alerts');
 const autopilot = require('./autopilot');
 const endpointRepair = require('./endpoint-repair');
+const workerRepair = require('./worker-repair');
 const extend = require('./extend');
 const adopt = require('./adopt');
 const scoring = require('./scoring');
@@ -173,6 +174,19 @@ async function tickOnce(conn, dataDir, snapshot, opts = {}) {
       }
     } catch (e) { log({ event: 'endpoint_repair_error', message: String(e && e.message) }); }
   }
+
+  // Stale per-rental stratum usernames, corrected in place. Runs after the two blocks above
+  // so a host/port change lands first and this re-points at the endpoint rentals are
+  // actually going to. A rental whose username a pool cannot attribute looks perfectly
+  // healthy from MRR's side, so nothing else in the tick would ever notice it.
+  try {
+    const r = await workerRepair.repairWorkers(conn, client, {
+      endpoint: endpoints.active(conn),
+      runMode: config.getKey(conn, 'run', 'mode') || 'dry-run',
+      now,
+    });
+    if (r && r.ran) log({ event: 'worker_repair', repaired: r.repaired, failed: r.failed });
+  } catch (e) { log({ event: 'worker_repair_error', message: String(e && e.message) }); }
 
   try {
     if (client && !skipSpendCycle) {

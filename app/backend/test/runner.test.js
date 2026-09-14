@@ -9,6 +9,7 @@ const { runLifecycle, tickOnce } = require('../engine/runner');
 const autopilot = require('../engine/autopilot');
 const extend = require('../engine/extend');
 const endpointRepair = require('../engine/endpoint-repair');
+const workerRepair = require('../engine/worker-repair');
 const adopt = require('../engine/adopt');
 const alerts = require('../alerts');
 
@@ -288,6 +289,27 @@ test('tickOnce adopts a matched orphan and SKIPS the top-up/extend cycle that sa
     assert.equal(adopt.adoptStrays.calls.length, 1, 'adoption attempted for the matched intent');
     assert.equal(autopilot.runCycle.calls.length, 0, 'no top-up on an adopt tick — the new row is not in this snapshot yet (would double-rent)');
     assert.equal(extend.runAutoExtend.calls.length, 0, 'no auto-extend on an adopt tick');
+  } finally { restore.forEach((r) => r()); }
+});
+
+test('tickOnce corrects stale rental usernames every tick, against the saved endpoint', async () => {
+  // Wiring, not logic: the correction is worthless if nothing calls it, and it is the only
+  // pass that can see a rental a pool is serving but cannot credit.
+  const c = db.get();
+  const sid = seedAutopilot(c);
+  c.prepare("INSERT INTO pool_endpoints (host,port,worker_base,mrr_profile_id,active) VALUES ('a.gg',3333,'bc1qx.phash',7,1)").run();
+  const restore = [
+    stub(workerRepair, 'repairWorkers', spy({ ran: true, repaired: 1, failed: 0 })),
+    stub(autopilot, 'runCycle', spy({ ran: false })),
+    stub(extend, 'runAutoExtend', spy({ ran: false })),
+  ];
+  try {
+    const snapshot = { session: c.prepare('SELECT * FROM sessions WHERE id=?').get(sid), rentals: [], fetch_ok: {} };
+    await tickOnce(c, DATA, snapshot, { now: 5_000_000, client: {} });
+    assert.equal(workerRepair.repairWorkers.calls.length, 1);
+    const [, , opts] = workerRepair.repairWorkers.calls[0];
+    assert.equal(opts.endpoint.worker_base, 'bc1qx.phash', 'passed the saved endpoint, which carries the address');
+    assert.equal(opts.runMode, 'dry-run', 'run mode is passed through so DRY-RUN cannot re-point a paid rental');
   } finally { restore.forEach((r) => r()); }
 });
 

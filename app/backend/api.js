@@ -255,6 +255,10 @@ async function handleApi(req, res, url, body, ctx = {}) {
     if (!host || !port || !user) return sendJson(res, 400, { error: 'host_port_user_required' });
     if (!(/^[a-zA-Z0-9.\-_]+$/.test(host) || isIp) || !(port > 0 && port < 65536)) return sendJson(res, 400, { error: 'invalid_host_or_port' });
     if (!/^[a-zA-Z0-9.\-_]+$/.test(user)) return sendJson(res, 400, { error: 'invalid_worker' });
+    // Must carry an address to build per-rental usernames from — a base that is all label
+    // (".phash", ".") would name every rental after nothing. Rejected here, at the only
+    // door worker_base comes through, so nothing downstream has to handle the empty case.
+    if (!endpoints.rentalWorker(user, 1)) return sendJson(res, 400, { error: 'invalid_worker' });
 
     // Light throttle so this authenticated endpoint can't be turned into a fast internal scanner.
     const nowMs = Date.now();
@@ -272,18 +276,16 @@ async function handleApi(req, res, url, body, ctx = {}) {
     /*
      * Test the username a rental will actually send, not just the one typed here.
      *
-     * Every rental connects as `<worker_base>-r<rentalid>`, so this endpoint used to
-     * confirm a string that is never used and save on the strength of it. The gap
-     * matters most to someone entering a bare address, which the charset check above
-     * allows: with no dot to separate it the suffix lands on the address itself, and a
-     * strict server reads the whole thing as one invalid address. Typed as
-     * address.worker the suffix lands on the worker name and the address survives.
+     * Every rental connects as `<address>.r<rentalid>` (endpoints.rentalWorker), so this
+     * endpoint used to confirm a string that is never used and save on the strength of it.
+     * Building it through the same helper is the point: whatever the rule is, the endpoint
+     * is tested against it rather than against a second copy of it that can drift.
      *
      * Only run when the base worked: if that failed there is nothing to distinguish.
      * The id is synthetic but real-width, so a length limit shows up here rather than
      * on the first rental.
      */
-    const rentalUser = `${user}-r9999999`;
+    const rentalUser = endpoints.rentalWorker(user, 9999999);
     const rentalProbe = probe.gotWork
       ? await stratum.probe(connectIp, port, rentalUser, { pass, timeoutMs: 12000 })
       : null;
@@ -328,7 +330,8 @@ async function handleApi(req, res, url, body, ctx = {}) {
 
     // Persist as the active endpoint ONLY when the probe confirmed work — a failed test
     // must not deactivate a previously-working endpoint. worker_base is the FULL entered
-    // username (per-rental workers append "-r<rentalid>" to it, so it needs the address).
+    // username: per-rental workers take the address out of it, and the saved pool that
+    // backs a failed override (bootstrap.js) uses it as typed, label and all.
     if (probe.gotWork && rentalWorkerOk) {
       // Scoped: saving an endpoint for one algorithm must not stand the other's down.
       endpoints.deactivateAll(conn);

@@ -66,7 +66,7 @@ function run() {
                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(sessionId, mrrId, 300000 + rentals.length, `Miner Rig #${rentals.length + 1}`,
         regions[rentals.length % regions.length], th, hours, paid, fee, 0.00000048,
-        startTs, nowSec + 2 * DAY, 'healthy', 96 + noise(2), `bc1qdemo.w-r${mrrId}`);
+        startTs, nowSec + 2 * DAY, 'healthy', 96 + noise(2), `bc1qdemo.r${mrrId}`);
     sumTh += th;
   }
 

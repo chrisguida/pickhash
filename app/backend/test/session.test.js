@@ -163,7 +163,7 @@ test('LIVE creates each rental, applies the per-rental worker override, and pers
   assert.equal(r.executed.length, r.planned.length);
   const rows = db.get().prepare('SELECT mrr_id, worker_name, health FROM rentals ORDER BY id').all();
   assert.equal(rows.length, r.executed.length);
-  assert.ok(rows.every((x) => x.mrr_id > 0 && /^bc1qabc\.phash-r\d+$/.test(x.worker_name) && x.health === 'pending'));
+  assert.ok(rows.every((x) => x.mrr_id > 0 && /^bc1qabc\.r\d+$/.test(x.worker_name) && x.health === 'pending'));
   // A create + a pool/0 override for each rig.
   const creates = client.state.puts.filter((c) => c[0] === '/rental').length;
   const overrides = client.state.puts.filter((c) => /\/pool\/0$/.test(c[0])).length;

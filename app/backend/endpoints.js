@@ -43,4 +43,42 @@ function deactivateAll(conn, algo) {
   return conn.prepare('UPDATE pool_endpoints SET active = 0 WHERE algo = ?').run(slug);
 }
 
-module.exports = { active, deactivateAll };
+/**
+ * The payout address inside a worker base: everything before the first period.
+ *
+ * `worker_base` is the FULL username the user typed, which may be a bare address or
+ * `address.label`. Pools read the part before the first period as the address, so that
+ * is what this returns, and it is the one rule every derived username is built on.
+ */
+function poolAddress(workerBase) {
+  return String(workerBase || '').split('.')[0];
+}
+
+/**
+ * The stratum username for one rental: `<address>.r<mrrId>`.
+ *
+ * Pool compatibility, not formatting taste. Rentals used to connect as
+ * `<worker_base>-r<id>`: Ocean accepted the dash, Convoy — the main BLAKE2b pool —
+ * does not, so on Convoy every rental authorised as nothing and delivered nothing
+ * while still billing. `<address>.<worker>` is the form both accept, so it is the
+ * only form we send.
+ *
+ * Deriving the address rather than appending to whatever was typed is what makes the
+ * result safe: exactly one period however the user entered it, and a worker segment
+ * (`r<id>`) with no separator character in it at all. It also retires the old trap
+ * where a bare address — which the charset check allows — had the suffix run into the
+ * address itself and be rejected as one invalid address.
+ *
+ * A label the user typed (`address.phash`) is deliberately not carried into per-rental
+ * names: keeping it would need a second separator, which is the thing that broke. It
+ * still stands as the username on the shared saved pool (see bootstrap.js).
+ *
+ * @returns {string|null} null when there is no address to build on, which the endpoint
+ *   save path rejects up front rather than letting it reach a rental.
+ */
+function rentalWorker(workerBase, mrrId) {
+  const address = poolAddress(workerBase);
+  return address ? `${address}.r${mrrId}` : null;
+}
+
+module.exports = { active, deactivateAll, poolAddress, rentalWorker };

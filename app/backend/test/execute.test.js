@@ -72,7 +72,7 @@ test('a LIVE authorized rent creates the rental + worker override + decision and
   const r = await execute(db.get(), client, { sessionId, endpoint, gateResult: { authorized: [action(1)], wouldDo: [] } });
   assert.equal(r.executed.length, 1);
   const row = db.get().prepare('SELECT * FROM rentals WHERE session_id = ?').get(sessionId);
-  assert.ok(row.mrr_id > 0 && /^bc1qx\.phash-r\d+$/.test(row.worker_name) && row.health === 'pending');
+  assert.ok(row.mrr_id > 0 && /^bc1qx\.r\d+$/.test(row.worker_name) && row.health === 'pending');
   assert.equal(row.endpoint_diff, 131072, 'diff telemetry persisted like a quick rental');
   assert.equal(client.state.puts.filter((p) => p[0] === '/rental').length, 1);
   assert.equal(client.state.puts.filter((p) => /\/pool\/0$/.test(p[0])).length, 1, 'per-rental worker override applied');

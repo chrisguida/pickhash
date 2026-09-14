@@ -116,7 +116,7 @@ function insertDecision(conn, sessionId, dryRun, fields) {
 // drops. Which pool, or whether there is one at all, is a property of the algorithm —
 // see algos.js. The '.fallback' worker tag makes fallback hashrate obvious on the pool.
 function fallbackWorker(workerBase) {
-  const address = String(workerBase || '').split('.')[0];   // strip any '.worker' suffix -> the BTC address
+  const address = endpoints.poolAddress(workerBase);   // strip any '.worker' suffix -> the BTC address
   return address ? `${address}.fallback` : null;
 }
 
@@ -149,18 +149,26 @@ async function rentOne(client, intent, endpoint, opts = {}) {
   // may have been billed for a rental we can no longer address, so halt for reconciliation
   // rather than persist a NaN handle.
   if (!Number.isInteger(mrrId) || mrrId <= 0) throw new MrrAmbiguousError('create returned no usable rental id');
-  const worker = `${endpoint.worker_base}-r${mrrId}`;
+  const worker = endpoints.rentalWorker(endpoint.worker_base, mrrId);
   // Carries this rig's difficulty request when there is one, else the inert 'x' this
   // always sent. Falls back to 'x' rather than undefined so an intent from an older
   // stored quote cannot put a literal "undefined" in the password field.
   const stratumPass = intent.stratumPass || 'x';
   let poolOverride = 'applied';
-  try {
-    await client.put(`/rental/${mrrId}/pool/0`, { host: endpoint.host, port: endpoint.port, user: worker, pass: stratumPass, priority: 0 });
-  } catch {
-    // The rental still runs on the profile's shared worker; we just lose per-rental
-    // attribution. Note it rather than fail the whole session.
+  // No worker means the saved base carried no address to build one from, which the save
+  // path rejects — so this is a guard, not a path. Never send a null username: the rental
+  // keeps the profile's shared worker, and we lose per-rental attribution rather than
+  // handing the pool an empty user.
+  if (!worker) {
     poolOverride = 'fallback_shared_worker';
+  } else {
+    try {
+      await client.put(`/rental/${mrrId}/pool/0`, { host: endpoint.host, port: endpoint.port, user: worker, pass: stratumPass, priority: 0 });
+    } catch {
+      // The rental still runs on the profile's shared worker; we just lose per-rental
+      // attribution. Note it rather than fail the whole session.
+      poolOverride = 'fallback_shared_worker';
+    }
   }
   // Optional Ocean fallback at priority 1. Best-effort: a failure here just means this rental has no
   // safety net — it still runs on the primary, so never fail the rental over it.

@@ -2,15 +2,13 @@
 /*
  * The endpoint test has to test the username a rental will actually send.
  *
- * Every rental connects as `<worker_base>-r<rentalid>`, so confirming only the string
- * the user typed proves something that is never used. The failure that gap hides is
- * quiet and expensive: the endpoint saves, rentals are paid for, and none of them can
+ * Every rental connects as `<address>.r<rentalid>`, so confirming only the string the
+ * user typed proves something that is never used. The failure that gap hides is quiet
+ * and expensive: the endpoint saves, rentals are paid for, and none of them can
  * authorise.
  *
- * It bites hardest on a bare address, which the charset check allows. With no dot to
- * separate it the suffix runs into the address itself, and a server that parses the
- * whole username as one address rejects it. Entered as address.worker the suffix lands
- * on the worker name and the address survives, which is why the field asks for that.
+ * Both forms are probed because they can differ: the typed base may carry a label the
+ * per-rental name drops, and a pool may serve one and refuse the other.
  */
 // The route throttles itself to one probe a second so it cannot be turned into a
 // fast internal scanner. Read at module load, so it has to be set before the
@@ -79,16 +77,17 @@ function serverThatAccepts(predicate) {
 
 test('a strict server that rejects the per-rental username fails the test, and saves nothing', async () => {
   await withDb(async (conn, dir) => {
-    // The shape of a server that reads the whole username as one address: the bare
-    // address authorises, the same address with -r9999999 glued on does not.
+    // A pool that takes the address and nothing else: the bare address authorises, the
+    // same address with a worker name after it does not. Saving on the strength of the
+    // first would buy rentals that can never authorise.
     const srv = serverThatAccepts((u) => u === ADDRESS);
     try {
       const r = await poolTest(dir, ADDRESS);
       assert.equal(r.json.ok, false, 'must not pass on the strength of a username rentals never send');
       assert.equal(r.json.probe.gotWork, true, 'the typed username did work, which is why this was invisible');
       assert.equal(r.json.rental_worker_ok, false);
-      assert.equal(r.json.rental_worker, `${ADDRESS}-r9999999`);
-      assert.deepEqual(srv.seen, [ADDRESS, `${ADDRESS}-r9999999`], 'both forms are tried');
+      assert.equal(r.json.rental_worker, `${ADDRESS}.r9999999`);
+      assert.deepEqual(srv.seen, [ADDRESS, `${ADDRESS}.r9999999`], 'both forms are tried');
       assert.equal(conn.prepare('SELECT COUNT(*) n FROM pool_endpoints').get().n, 0, 'nothing saved');
     } finally { srv.restore(); }
   });
@@ -96,16 +95,44 @@ test('a strict server that rejects the per-rental username fails the test, and s
 
 test('address.worker survives the suffix, so it passes and saves', async () => {
   await withDb(async (conn, dir) => {
-    // Same strict rule, expressed the way such a server actually behaves: everything
-    // before the first dot must be the address.
+    // The rule a real pool applies: everything before the first dot must be the address.
     const srv = serverThatAccepts((u) => u.split('.')[0] === ADDRESS);
     try {
       const r = await poolTest(dir, `${ADDRESS}.phash`);
       assert.equal(r.json.ok, true);
       assert.equal(r.json.rental_worker_ok, true);
       const row = conn.prepare('SELECT worker_base, active FROM pool_endpoints').get();
-      assert.equal(row.worker_base, `${ADDRESS}.phash`, 'the full entered username is stored, suffix added per rental');
+      assert.equal(row.worker_base, `${ADDRESS}.phash`, 'the full entered username is stored; rentals take the address out of it');
       assert.equal(row.active, 1);
+    } finally { srv.restore(); }
+  });
+});
+
+test('a bare address is no longer a trap — it passes the per-rental probe too', async () => {
+  await withDb(async (conn, dir) => {
+    // Convoy's rule, and the reason for the naming change: one period, address first,
+    // and no dash anywhere. Under the old `<base>-r<id>` form a bare address produced
+    // `<address>-r9999999`, which this server refuses; now it produces
+    // `<address>.r9999999`, which it serves.
+    const srv = serverThatAccepts((u) => u.split('.')[0] === ADDRESS && !u.includes('-'));
+    try {
+      const r = await poolTest(dir, ADDRESS);
+      assert.equal(r.json.ok, true, 'a bare address is a complete answer now');
+      assert.equal(r.json.rental_worker, `${ADDRESS}.r9999999`);
+      assert.equal(conn.prepare('SELECT worker_base FROM pool_endpoints').get().worker_base, ADDRESS);
+    } finally { srv.restore(); }
+  });
+});
+
+test('a username with no address is refused before it can name a rental', async () => {
+  await withDb(async (conn, dir) => {
+    const srv = serverThatAccepts(() => true);
+    try {
+      // Passes the charset check, but leaves nothing before the first period — every
+      // rental would be named after an empty address.
+      assert.equal((await poolTest(dir, '.phash')).json.error, 'invalid_worker');
+      assert.equal(srv.seen.length, 0, 'rejected without opening a connection');
+      assert.equal(conn.prepare('SELECT COUNT(*) n FROM pool_endpoints').get().n, 0);
     } finally { srv.restore(); }
   });
 });

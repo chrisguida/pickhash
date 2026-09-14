@@ -45,7 +45,7 @@ test('adoptStrays inserts a tracked rental from MRR detail, counts the spend, re
   assert.ok(Math.abs(row.advertised_th - 100) < 1e-9, '0.1 PH -> 100 TH');
   assert.equal(row.paid_sats + row.fee_sats, 60_000, '0.0006 BTC total counted');
   assert.equal(row.health, 'pending');
-  assert.equal(row.worker_name, 'bc1qx.phash-r9001');
+  assert.equal(row.worker_name, 'bc1qx.r9001', 'adopted rentals use the same <address>.r<id> form as normal ones');
   assert.equal(db.get().prepare('SELECT spent_sats FROM sessions WHERE id = ?').get(sessionId).spent_sats, 60_000, 'orphan counts against the budget');
   assert.equal(db.get().prepare('SELECT sats FROM spend_events WHERE mrr_id = 9001').get().sats, 60_000);
   assert.equal(client.state.puts.filter((p) => /\/pool\/0$/.test(p[0])).length, 1, 'pool override re-applied');

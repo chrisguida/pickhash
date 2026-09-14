@@ -14,6 +14,7 @@ const units = require('../units');
 const market = require('../market');
 const alerts = require('../alerts');
 const stratumDiff = require('../diff');
+const endpoints = require('../endpoints');
 
 function num(v) { return v === '' || v == null ? null : Number(v); }
 
@@ -63,7 +64,7 @@ async function adoptStrays(conn, client, { sessionId, endpoint, adopt, nowSec, d
     const lengthHours = num(d.length) || 0;
     const start = num(d.start) > 0 ? num(d.start) : nowSec;
     const end = num(d.end) > 0 ? num(d.end) : start + Math.round(lengthHours * 3600);
-    const worker = `${endpoint.worker_base}-r${mrrId}`;
+    const worker = endpoints.rentalWorker(endpoint.worker_base, mrrId);
     const adv = advertisedTh(d);
     const rig = await rigRecord(client, d, s.rigId);
     // Same rule as a normal rental: only ask for a difficulty when the endpoint was
