@@ -343,9 +343,18 @@ document.addEventListener('alpine:init', () => {
       let r = null;
       try { r = await this.getJson('/api/setup/mrr-pools'); } catch { r = null; }
       const pools = r && Array.isArray(r.pools) ? r.pools : [];
-      // Keep the option text short: the address is the long part, and the full worker lands in the field anyway.
+      // Keep the option text short: a native <select> list sizes itself to its longest option and
+      // spills past the card otherwise. The address is abbreviated (the full worker lands in the
+      // field anyway), host:port is not repeated when the pool's name already carries it (the
+      // pools this app creates are named that way), and a raw IP is called out so an endpoint
+      // and the name later given to it read as two different things, which on MRR they are.
       const brief = (u) => (u.length > 22 ? `${u.slice(0, 10)}…${u.slice(-8)}` : u);
-      this.mrrPools = pools.map((pl) => ({ ...pl, label: `${pl.name || pl.id}  ·  ${pl.host}:${pl.port}  ·  ${brief(pl.user)}` }));
+      const isIp = (h) => /^[0-9.]+$/.test(h) || h.includes(':');
+      this.mrrPools = pools.map((pl) => {
+        const hp = `${pl.host}:${pl.port}`;
+        const head = /^pickhash:/.test(pl.name) ? `${hp} (Pickhash's own)` : `${(pl.name || pl.id).slice(0, 24)} · ${hp}${isIp(pl.host) ? ' (raw IP)' : ''}`;
+        return { ...pl, label: `${head} · ${brief(pl.user)}` };
+      });
       // The <select>s bind to these; reset them only once the new options are rendered.
       this.$nextTick(() => { this.mrrPoolPick = ''; this.seMrrPoolPick = ''; });
     },
